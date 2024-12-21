@@ -14,3 +14,5 @@ export const OPENAI_INSTRUCTION = process.env.OPENAI_INSTRUCTION;
 
 export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 export const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+export const YAHOO_FINANCE_NEWS_PAGES_LIMIT = Number(process.env.YAHOO_FINANCE_NEWS_PAGES_LIMIT);

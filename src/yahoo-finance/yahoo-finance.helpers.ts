@@ -81,7 +81,7 @@ const yahooFinanceWaitForLoadingStories = async (page: Page) => {
 
 export const parseYahooFinanceLastStories = async (
   page: Page,
-  maxPages = 1,
+  maxPages: number,
 ): Promise<YahooFinanceStory[]> => {
   let totalParsedStoryPages = 0;
 

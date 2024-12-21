@@ -3,8 +3,8 @@ import * as fs from 'node:fs/promises';
 import type { ScrapperConfig } from '../types';
 import type { YahooFinanceScrappingResult } from './yahoo-finance.types';
 import { YAHOO_FINANCE_WEB_SITE_URL } from './yahoo-finance.constants';
-import { OPENAI_ENABLED } from '../config';
-import { cleanupContent, connectBrowser, log, wait } from '../helpers';
+import { OPENAI_ENABLED, YAHOO_FINANCE_NEWS_PAGES_LIMIT } from '../config';
+import { cleanupContent, connectBrowser, log } from '../helpers';
 import {
   acceptYahooFinanceConsentForm,
   analyzeYahooFinanceStoriesWithOpenAI,
@@ -37,7 +37,7 @@ export const runYahooFinanceScrapper = async (scrapperConfig: ScrapperConfig = {
       },
     );
 
-    const lastStories = await parseYahooFinanceLastStories(page, 1);
+    const lastStories = await parseYahooFinanceLastStories(page, YAHOO_FINANCE_NEWS_PAGES_LIMIT);
 
     for (const story of lastStories) {
       if (!story.link) {
