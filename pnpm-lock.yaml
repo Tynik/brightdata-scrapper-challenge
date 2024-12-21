@@ -23,9 +23,6 @@ importers:
       puppeteer:
         specifier: 23.10.4
         version: 23.10.4(typescript@5.7.2)
-      puppeteer-core:
-        specifier: 23.10.4
-        version: 23.10.4
     devDependencies:
       '@types/node-schedule':
         specifier: 2.1.7
