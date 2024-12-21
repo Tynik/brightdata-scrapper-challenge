@@ -2,18 +2,22 @@ import type { Page } from 'puppeteer';
 import axios, { AxiosError } from 'axios';
 
 import type {
-  YahooFinanceLastStory,
-  YahooFinanceLastStoryTaxonomy,
+  YahooFinanceStory,
+  YahooFinanceStoryTaxonomy,
   YahooFinanceScrappingResult,
+  YahooFinanceStockIndex,
 } from './yahoo-finance.types';
 import {
   NOTIFICATION_CHANNELS,
-  OPENAI_API_MODEL,
+  OPENAI_INSTRUCTION,
+  OPENAI_MAX_TOKENS,
+  OPENAI_MODEL,
   TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID,
 } from '../config';
-import { YAHOO_FINANCE_NEWS_STREAM_MODULE_SELECTOR } from './yahoo-finance.constants';
+import { log } from '../helpers';
 import { openAIClient } from '../clients';
+import { YAHOO_FINANCE_WEB_SITE_URL } from './yahoo-finance.constants';
 
 export function assert(condition: any, message: string): asserts condition {
   if (!condition) {
@@ -23,24 +27,24 @@ export function assert(condition: any, message: string): asserts condition {
 
 export const acceptYahooFinanceConsentForm = async (page: Page) => {
   try {
-    console.log('Waiting for consent form');
+    log('info', 'Waiting for consent form');
     await page.waitForSelector('#consent-page .consent-form', {
       timeout: 10000,
       visible: true,
     });
 
-    console.log('Waiting for accepting the consent form button');
+    log('info', 'Waiting for accepting the consent form button');
     await page.waitForSelector('#consent-page .consent-form button[name="agree"]', {
       visible: true,
     });
 
-    console.log('Accepting the consent form');
+    log('info', 'Accepting the consent form');
     await page.$eval('#consent-page .consent-form button[name="agree"]', element =>
       element.click(),
     );
   } catch (e) {
     if ((e as Error).name === 'TimeoutError') {
-      console.log('Timeout reached: No consent form detected within 10 seconds');
+      log('info', 'Timeout reached: No consent form detected within 10 seconds');
     } else {
       throw e;
     }
@@ -49,18 +53,18 @@ export const acceptYahooFinanceConsentForm = async (page: Page) => {
 
 const yahooFinanceWaitForLoadingStories = async (page: Page) => {
   try {
-    console.log('Waiting for loading news');
+    log('info', 'Waiting for loading news');
     await page.waitForSelector(
-      `${YAHOO_FINANCE_NEWS_STREAM_MODULE_SELECTOR} [data-testid="news-stream"] .stream-items .tw-flex`,
+      '[data-testid="module-news-stream"] [data-testid="news-stream"] .stream-items .tw-flex',
       {
         timeout: 5000,
         visible: true,
       },
     );
 
-    console.log('Loading news detected. Waiting until the news will be loaded');
+    log('info', 'Loading news detected. Waiting until the news will be loaded');
     await page.waitForSelector(
-      `${YAHOO_FINANCE_NEWS_STREAM_MODULE_SELECTOR} [data-testid="news-stream"] .stream-items .tw-flex`,
+      '[data-testid="module-news-stream"] [data-testid="news-stream"] .stream-items .tw-flex',
       {
         timeout: 5000,
         hidden: true,
@@ -68,7 +72,7 @@ const yahooFinanceWaitForLoadingStories = async (page: Page) => {
     );
   } catch (e) {
     if ((e as Error).name === 'TimeoutError') {
-      console.log('Timeout reached: No loading news detected within 5 seconds');
+      log('info', 'Timeout reached: No loading news detected within 5 seconds');
     } else {
       throw e;
     }
@@ -78,22 +82,19 @@ const yahooFinanceWaitForLoadingStories = async (page: Page) => {
 export const parseYahooFinanceLastStories = async (
   page: Page,
   maxPages = 1,
-): Promise<YahooFinanceLastStory[]> => {
+): Promise<YahooFinanceStory[]> => {
   let totalParsedStoryPages = 0;
 
-  const allParsedStories: YahooFinanceLastStory[] = [];
+  const allParsedStories: YahooFinanceStory[] = [];
 
   while (totalParsedStoryPages < maxPages) {
-    console.log(`Parsing news onto a page: ${totalParsedStoryPages + 1}`);
-
-    await yahooFinanceWaitForLoadingStories(page);
+    log('info', `Parsing news onto a page: ${totalParsedStoryPages + 1}`);
 
     const parsedStreamedStories = await page.$$eval(
-      `${YAHOO_FINANCE_NEWS_STREAM_MODULE_SELECTOR} [data-testid="news-stream"] [data-testid="storyitem"]`,
+      '[data-testid="module-news-stream"] [data-testid="news-stream"] [data-testid="storyitem"]',
       (storyElements, totalParsedStories) =>
         storyElements.slice(totalParsedStories).map(storyElement => {
           const storyTitle = storyElement.querySelector('.subtle-link h3')?.textContent?.trim();
-          const storyContent = storyElement.querySelector('.subtle-link p')?.textContent?.trim();
           const storyLink = storyElement.querySelector('.subtle-link')?.getAttribute('href');
 
           const storyPublishingParts = storyElement
@@ -101,11 +102,12 @@ export const parseYahooFinanceLastStories = async (
             ?.textContent?.split('•')
             .map(v => v.trim());
 
-          const storyTaxonomies: YahooFinanceLastStoryTaxonomy[] = [
+          const storyTaxonomies: YahooFinanceStoryTaxonomy[] = [
             ...storyElement.querySelectorAll('.taxonomy-links [data-testid="ticker-container"]'),
-          ].map(element => {
-            const quoteName = element.getAttribute('aria-label');
-            const percentChange = element.querySelector(
+          ].map(tickerElement => {
+            const quoteName = tickerElement.getAttribute('aria-label');
+            const quoteHref = tickerElement.getAttribute('href');
+            const percentChange = tickerElement.querySelector(
               '[data-field="regularMarketChangePercent"]',
             )?.textContent;
 
@@ -116,13 +118,14 @@ export const parseYahooFinanceLastStories = async (
             return {
               name: quoteName,
               percentChange: percentChange ?? null,
-              link: `https://finance.yahoo.com/quote/${quoteName}`,
+              href: `https://finance.yahoo.com${quoteHref}`,
             };
           });
 
-          const parsedStory: YahooFinanceLastStory = {
+          const parsedStory: YahooFinanceStory = {
             title: storyTitle ?? null,
-            content: storyContent ?? null,
+            // Will be fetched further
+            content: null,
             link: storyLink ?? null,
             published: {
               where: storyPublishingParts?.[0] ?? null,
@@ -138,25 +141,26 @@ export const parseYahooFinanceLastStories = async (
     );
 
     if (!parsedStreamedStories.length) {
-      console.log(`No news found for page: ${totalParsedStoryPages + 1}`);
+      log('info', `No news found for page: ${totalParsedStoryPages + 1}`);
       break;
     }
 
     totalParsedStoryPages += 1;
     allParsedStories.push(...parsedStreamedStories);
 
-    console.log(
+    log(
+      'info',
       `Total parsed news for page ${totalParsedStoryPages}: ${parsedStreamedStories.length}`,
     );
 
-    // If more pages need to be parsed, scroll to load more
+    // If more pages need to be parsed, scroll to the end for loading more news
     if (totalParsedStoryPages < maxPages) {
       try {
-        console.log('Scrolling down to load the next portion of news');
+        log('info', 'Scrolling down to load the next portion of news');
 
         await page.evaluate(async () => {
           const elements = document.querySelectorAll(
-            `${YAHOO_FINANCE_NEWS_STREAM_MODULE_SELECTOR} [data-testid="news-stream"] .stream-items li`,
+            '[data-testid="module-news-stream"] [data-testid="news-stream"] .stream-items li',
           );
 
           const loadNextNewsPageTrigger = elements[elements.length - 1];
@@ -170,7 +174,7 @@ export const parseYahooFinanceLastStories = async (
         await yahooFinanceWaitForLoadingStories(page);
       } catch (e) {
         if (e === 'end') {
-          console.log('The last page for news is detected. Exiting.');
+          log('info', 'The last page for news is detected. Exiting.');
           break;
         }
 
@@ -179,15 +183,71 @@ export const parseYahooFinanceLastStories = async (
     }
   }
 
-  console.log(`Total parsed news across all pages: ${allParsedStories.length}`);
+  log('info', `Total parsed news across all pages: ${allParsedStories.length}`);
 
   return allParsedStories;
+};
+
+export const parseYahooFinanceWorldIndices = async (
+  page: Page,
+): Promise<YahooFinanceStockIndex[]> => {
+  await page.goto(`${YAHOO_FINANCE_WEB_SITE_URL}/markets/world-indices`, {
+    waitUntil: 'domcontentloaded',
+  });
+
+  log('info', 'Waiting for loading world stock indices');
+  await page.waitForSelector('[data-testid="table-container"].markets-table', {
+    visible: true,
+  });
+
+  const worldIndices = await page.$$eval(
+    '[data-testid="table-container"].markets-table tbody tr',
+    elements =>
+      elements.map(element => {
+        const tdElements = element.querySelectorAll('td');
+
+        const name = element
+          ?.querySelector('[data-testid="table-cell-ticker"] .symbol')
+          ?.textContent?.trim();
+
+        const price = element
+          ?.querySelector('[data-field="regularMarketPrice"]')
+          ?.getAttribute('data-value');
+
+        const change = element
+          ?.querySelector('[data-field="regularMarketChange"]')
+          ?.getAttribute('data-value');
+
+        const volume = element
+          ?.querySelector('[data-field="regularMarketVolume"]')
+          ?.getAttribute('data-value');
+
+        const href = element
+          ?.querySelector('[data-testid="table-cell-ticker"]')
+          ?.getAttribute('href');
+
+        const stockIndex: YahooFinanceStockIndex = {
+          name: name ?? null,
+          price: price ? +price : null,
+          change: change ? +change : null,
+          volume: volume ? +volume : null,
+          href: `https://finance.yahoo.com${href}`,
+        };
+
+        return stockIndex;
+      }),
+  );
+
+  return worldIndices;
 };
 
 export const analyzeYahooFinanceStoriesWithOpenAI = async (
   scrappingResult: YahooFinanceScrappingResult,
 ) => {
-  console.log('Analyzing data with OpenAI...');
+  assert(OPENAI_INSTRUCTION, 'Please set OPENAI_INSTRUCTION in the configuration');
+  assert(OPENAI_MAX_TOKENS, 'Please set OPENAI_MAX_TOKENS in the configuration');
+
+  log('info', 'Analyzing data with OpenAI...');
 
   const storiesText = scrappingResult.lastStories
     .map(story => {
@@ -206,29 +266,42 @@ export const analyzeYahooFinanceStoriesWithOpenAI = async (
     })
     .join('\n\n');
 
+  const worldIndicesText = scrappingResult.worldIndices
+    .map(
+      stockIndex =>
+        `${stockIndex.name || 'UNKNOWN'}: Price ${stockIndex.price || 'N/A'}, Change ${
+          stockIndex.change || 'N/A'
+        }, Volume ${stockIndex.volume || 'N/A'}`,
+    )
+    .join('\n');
+
   try {
     const chatCompletion = await openAIClient.chat.completions.create({
-      model: OPENAI_API_MODEL,
+      model: OPENAI_MODEL,
+      max_tokens: OPENAI_MAX_TOKENS,
+      n: 1,
       messages: [
         {
           role: 'system',
-          content:
-            'You are a financial analyst AI. Analyze the following financial news data, summarize trends, and highlight key positive or negative sentiments about the stock market.',
+          content: OPENAI_INSTRUCTION,
         },
         {
           role: 'user',
           content: `
             Timestamp: ${scrappingResult.timestamp}
-            Stories: ${storiesText}
+            Stories:
+            ${storiesText}
+            
+            World Indices:
+            ${worldIndicesText}
           `,
         },
       ],
-      max_tokens: 1000,
     });
 
     return chatCompletion.choices[0].message.content;
   } catch (e) {
-    console.error('Error during OpenAI analysis:', (e as Error).message);
+    log('error', 'Error during OpenAI analysis:', e as Error);
   }
 };
 
@@ -245,13 +318,11 @@ export const sendToTelegram = async (text: string) => {
       text,
       chat_id: TELEGRAM_CHAT_ID,
     });
-
-    console.log('Message sent to Telegram!');
   } catch (e) {
     if (e instanceof AxiosError) {
-      console.error('Error sending message to Telegram:', e.response?.data || e.message);
+      log('error', 'Error sending message to Telegram:', e.response?.data || e.message);
     } else {
-      console.error(e);
+      log('error', '', e as Error);
     }
   }
 };

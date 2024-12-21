@@ -2,15 +2,14 @@ import * as fs from 'node:fs/promises';
 
 import type { ScrapperConfig } from '../types';
 import type { YahooFinanceScrappingResult } from './yahoo-finance.types';
-import {
-  YAHOO_FINANCE_WEB_SITE_URL,
-  YAHOO_FINANCE_NEWS_STREAM_MODULE_SELECTOR,
-} from './yahoo-finance.constants';
-import { connectBrowser } from '../helpers';
+import { YAHOO_FINANCE_WEB_SITE_URL } from './yahoo-finance.constants';
+import { OPENAI_ENABLED } from '../config';
+import { cleanupContent, connectBrowser, log, wait } from '../helpers';
 import {
   acceptYahooFinanceConsentForm,
   analyzeYahooFinanceStoriesWithOpenAI,
   parseYahooFinanceLastStories,
+  parseYahooFinanceWorldIndices,
   sendToTelegram,
 } from './yahoo-finance.helpers';
 
@@ -20,43 +19,71 @@ export const runYahooFinanceScrapper = async (scrapperConfig: ScrapperConfig = {
   try {
     await acceptYahooFinanceConsentForm(page);
 
-    console.log('Waiting for news stream module');
-    await page.waitForSelector(YAHOO_FINANCE_NEWS_STREAM_MODULE_SELECTOR);
+    log('info', 'Waiting for news stream module');
+    await page.waitForSelector('[data-testid="module-news-stream"]');
 
-    console.log('Scrolling to the news stream module');
+    log('info', 'Scrolling to the news stream module');
     await page.evaluate(() => {
-      const element = document.querySelector(YAHOO_FINANCE_NEWS_STREAM_MODULE_SELECTOR);
+      const element = document.querySelector('[data-testid="module-news-stream"]');
 
       element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
-    console.log('Waiting for news stream appearance');
+    log('info', 'Waiting for news stream appearance');
     await page.waitForSelector(
-      `${YAHOO_FINANCE_NEWS_STREAM_MODULE_SELECTOR} [data-testid="news-stream"] .stream-items`,
+      `[data-testid="module-news-stream"] [data-testid="news-stream"] .stream-items li`,
       {
         visible: true,
       },
     );
 
-    const lastStories = await parseYahooFinanceLastStories(page, 10);
+    const lastStories = await parseYahooFinanceLastStories(page, 1);
+
+    for (const story of lastStories) {
+      if (!story.link) {
+        log('warn', 'Story has no link, skipping...');
+        continue;
+      }
+
+      try {
+        log('info', `Navigating to: ${story.link}`);
+        await page.goto(story.link, { waitUntil: 'domcontentloaded' });
+
+        await page.waitForSelector('section.main article');
+
+        story.content =
+          cleanupContent(
+            await page.evaluate(
+              () => document.querySelector('section.main article .body-wrap')?.textContent,
+            ),
+          ) ?? null;
+      } catch (e) {
+        log('error', `Error navigating to ${story.link}:`, e as Error);
+      }
+    }
+
+    const worldIndices = await parseYahooFinanceWorldIndices(page);
 
     const currentTimestamp = Date.now();
     const scrappingResult: YahooFinanceScrappingResult = {
       timestamp: currentTimestamp,
       lastStories,
+      worldIndices,
     };
 
     const scrappingResultFileName = `yahoo-finance-scrapping-result-${currentTimestamp}.json`;
     const scrappingResultJSONString = JSON.stringify(scrappingResult, null, 2);
 
     await fs.writeFile(scrappingResultFileName, scrappingResultJSONString, 'utf8');
-    console.log(`Yahoo Finance scrapping result is saved to "${scrappingResultFileName}"`);
+    log('info', `Yahoo Finance scrapping result is saved to "${scrappingResultFileName}"`);
 
-    const analyzedAIScrappingResult = await analyzeYahooFinanceStoriesWithOpenAI(scrappingResult);
-    if (analyzedAIScrappingResult) {
-      console.log('OpenAI Analysis Result:\n', analyzedAIScrappingResult);
+    if (OPENAI_ENABLED) {
+      const analyzedAIScrappingResult = await analyzeYahooFinanceStoriesWithOpenAI(scrappingResult);
+      if (analyzedAIScrappingResult) {
+        log('info', `OpenAI Analysis Result: ${analyzedAIScrappingResult}`);
 
-      await sendToTelegram(analyzedAIScrappingResult);
+        await sendToTelegram(analyzedAIScrappingResult);
+      }
     }
   } finally {
     await browser.close();

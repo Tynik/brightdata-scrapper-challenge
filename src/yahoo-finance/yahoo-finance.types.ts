@@ -1,10 +1,10 @@
-export type YahooFinanceLastStoryTaxonomy = {
+export type YahooFinanceStoryTaxonomy = {
   name: string;
   percentChange: string | null;
-  link: string;
+  href: string;
 };
 
-export type YahooFinanceLastStory = {
+export type YahooFinanceStory = {
   title: string | null;
   content: string | null;
   link: string | null;
@@ -12,10 +12,19 @@ export type YahooFinanceLastStory = {
     where: string | null;
     when: string | null;
   };
-  taxonomies: YahooFinanceLastStoryTaxonomy[];
+  taxonomies: YahooFinanceStoryTaxonomy[];
+};
+
+export type YahooFinanceStockIndex = {
+  name: string | null;
+  price: number | null;
+  change: number | null;
+  volume: number | null;
+  href: string | null;
 };
 
 export type YahooFinanceScrappingResult = {
   timestamp: number;
-  lastStories: YahooFinanceLastStory[];
+  lastStories: YahooFinanceStory[];
+  worldIndices: YahooFinanceStockIndex[];
 };
