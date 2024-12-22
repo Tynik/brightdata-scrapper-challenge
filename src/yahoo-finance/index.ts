@@ -45,20 +45,24 @@ export const runYahooFinanceScrapper = async (scrapperConfig: ScrapperConfig = {
         continue;
       }
 
+      const storyPage = await browser.newPage();
+
       try {
         log('info', `Navigating to: ${story.link}`);
-        await page.goto(story.link, { waitUntil: 'domcontentloaded' });
 
-        await page.waitForSelector('section.main article');
+        await storyPage.goto(story.link, { waitUntil: 'domcontentloaded' });
+        await storyPage.waitForSelector('section.main article');
 
         story.content =
           cleanupContent(
-            await page.evaluate(
+            await storyPage.evaluate(
               () => document.querySelector('section.main article .body-wrap')?.textContent,
             ),
           ) ?? null;
       } catch (e) {
         log('error', `Error navigating to ${story.link}:`, e as Error);
+      } finally {
+        await storyPage.close();
       }
     }
 

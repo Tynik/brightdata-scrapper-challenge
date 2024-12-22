@@ -12,7 +12,8 @@
     "axios": "1.7.9",
     "puppeteer": "23.10.4",
     "openai": "4.76.3",
-    "node-schedule": "2.1.1"
+    "node-schedule": "2.1.1",
+    "devtools-protocol": "0.0.1396320"
   },
   "devDependencies": {
     "@types/node-schedule": "2.1.7",

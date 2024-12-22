@@ -14,6 +14,9 @@ importers:
       axios:
         specifier: 1.7.9
         version: 1.7.9
+      devtools-protocol:
+        specifier: 0.0.1396320
+        version: 0.0.1396320
       node-schedule:
         specifier: 2.1.1
         version: 2.1.1
@@ -225,6 +228,9 @@ packages:
 
   devtools-protocol@0.0.1367902:
     resolution: {integrity: sha512-XxtPuC3PGakY6PD7dG66/o8KwJ/LkH2/EKe19Dcw58w53dv4/vSQEkn/SzuyhHE2q4zPgCkxQBxus3VV4ql+Pg==}
+
+  devtools-protocol@0.0.1396320:
+    resolution: {integrity: sha512-QQoDyeDxHmexf/ZwBw3Q/rUUZ7ntvBElUr7S/72lD+rWnvr25fjOdvSSmgyVEdTg6kXwUYc+UJvboO/qHPiJHA==}
 
   dotenv@16.4.7:
     resolution: {integrity: sha512-47qPchRCykZC03FhkYAhrvwU4xDBFIj1QPqaarj6mdM/hgUzfPHcpkHJOn3mJAufFeeAxAzeGsr5X0M4k6fLZQ==}
@@ -892,6 +898,8 @@ snapshots:
   delayed-stream@1.0.0: {}
 
   devtools-protocol@0.0.1367902: {}
+
+  devtools-protocol@0.0.1396320: {}
 
   dotenv@16.4.7: {}
 

@@ -66,6 +66,20 @@ export const connectBrowser = async (url: string) => {
   const page = await browser.newPage();
   page.setDefaultTimeout(DEFAULT_PAGE_TIMEOUT_MS);
 
+  if (BROWSER_WS) {
+    const cdpSession = await page.createCDPSession();
+    const {
+      frameTree: { frame },
+    } = await cdpSession.send('Page.getFrameTree');
+
+    // @ts-expect-error
+    const response: { url: string } = await cdpSession.send('Page.inspect', {
+      frameId: frame.id,
+    });
+
+    log('info', `Inspect session at ${response.url}`);
+  }
+
   await page.goto(url, {
     waitUntil: 'domcontentloaded',
     timeout: DEFAULT_PAGE_TIMEOUT_MS,
@@ -77,7 +91,7 @@ export const connectBrowser = async (url: string) => {
   };
 };
 
-export const wait = (timeMs: number) => new Promise(resolve => setTimeout(resolve, timeMs));
+export const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const withRetries = async <T>(
   fn: () => Promise<T>,
