@@ -15,7 +15,7 @@ import {
   TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID,
 } from '../config';
-import { log } from '../helpers';
+import { gracefulTimeout, log } from '../helpers';
 import { openAIClient } from '../clients';
 import { YAHOO_FINANCE_WEB_SITE_URL } from './yahoo-finance.constants';
 
@@ -26,7 +26,7 @@ export function assert(condition: any, message: string): asserts condition {
 }
 
 export const acceptYahooFinanceConsentForm = async (page: Page) => {
-  try {
+  await gracefulTimeout(async () => {
     log('info', 'Waiting for consent form');
     await page.waitForSelector('#consent-page .consent-form', {
       timeout: 10000,
@@ -42,17 +42,11 @@ export const acceptYahooFinanceConsentForm = async (page: Page) => {
     await page.$eval('#consent-page .consent-form button[name="agree"]', element =>
       element.click(),
     );
-  } catch (e) {
-    if ((e as Error).name === 'TimeoutError') {
-      log('info', 'Timeout reached: No consent form detected within 10 seconds');
-    } else {
-      throw e;
-    }
-  }
+  }, 'No consent form detected within 10 seconds');
 };
 
 const yahooFinanceWaitForLoadingStories = async (page: Page) => {
-  try {
+  await gracefulTimeout(async () => {
     log('info', 'Waiting for loading news');
     await page.waitForSelector(
       '[data-testid="module-news-stream"] [data-testid="news-stream"] .stream-items .tw-flex',
@@ -70,13 +64,7 @@ const yahooFinanceWaitForLoadingStories = async (page: Page) => {
         hidden: true,
       },
     );
-  } catch (e) {
-    if ((e as Error).name === 'TimeoutError') {
-      log('info', 'Timeout reached: No loading news detected within 5 seconds');
-    } else {
-      throw e;
-    }
-  }
+  }, 'No loading news detected within 5 seconds');
 };
 
 export const parseYahooFinanceLastStories = async (

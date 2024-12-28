@@ -128,3 +128,15 @@ export const withRetries = async <T>(
 
 export const cleanupContent = (rawContent: string | null | undefined) =>
   rawContent?.replace(/\s+/g, ' ').trim();
+
+export const gracefulTimeout = async (fn: () => Promise<any>, errorMsg: string) => {
+  try {
+    await fn();
+  } catch (e) {
+    if ((e as Error).name === 'TimeoutError') {
+      log('info', `Timeout reached: ${errorMsg}`);
+    } else {
+      throw e;
+    }
+  }
+};
